@@ -1,0 +1,52 @@
+Feature: Required fields and their valid values are documented for virtual account creation
+
+  As an integrator building on the Kira API
+  I want all required fields and their valid enum values to be listed in the documentation
+  So that I can complete integration without trial-and-error discovery
+
+  Background:
+    Given I have a valid Bearer token from POST /auth
+    And I have a verified user
+    And I set required auth headers
+
+  Scenario: Creating a US_BANK virtual account without the undocumented `bank` field fails
+    Given the documentation does not mention a required "bank" field for US_BANK accounts
+    When I POST to /v1/virtual-accounts with body:
+      """json
+      {
+        "user_id": "<verified_user_id>",
+        "type": "US_BANK"
+      }
+      """
+    Then the response status should be 400
+    And the response body contains:
+      """json
+      {
+        "message": "bank is bank is required for US_BANK virtual accounts"
+      }
+      """
+    And the error reveals a required field not mentioned in the documentation
+
+  Scenario: Sending an intuitive bank value fails with undiscoverable enum options
+    When I POST to /v1/virtual-accounts with body:
+      """json
+      {
+        "user_id": "<verified_user_id>",
+        "type": "US_BANK",
+        "bank": "ACT"
+      }
+      """
+    Then the response status should be 400
+    And the response body contains:
+      """json
+      {
+        "message": "bank is Invalid enum value. Expected 'portage' | 'slovak_savings_bank' | 'austin_capital_trust', received 'ACT'"
+      }
+      """
+    And the valid enum values "portage", "slovak_savings_bank", "austin_capital_trust" are not listed in any documentation page
+
+  Scenario: Error message for missing bank field contains a typo
+    When I POST to /v1/virtual-accounts without the bank field
+    Then the error message should be "bank is required for US_BANK virtual accounts"
+    But the actual message is "bank is bank is required for US_BANK virtual accounts"
+    And the duplicated "bank is" indicates an error message formatting bug
