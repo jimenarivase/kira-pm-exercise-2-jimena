@@ -1,0 +1,31 @@
+Feature: Deprecated verification_status field is not returned in API responses
+
+  As an integrator building on the Kira API
+  I want the API to only return current, non-deprecated fields
+  So that I don't accidentally build on fields that will be removed
+
+  Background:
+    Given I have a valid Bearer token from POST /auth
+    And I set required auth headers
+
+  Scenario: User creation response contains deprecated verification_status field
+    When I POST to /v1/users with a valid user payload
+    Then the response status should be 201
+    And the response body contains "status": "CREATED"
+    And the response body also contains "verification_status": "unverified"
+    But the documentation states "verification_status is deprecated — use status instead"
+    And both fields are present simultaneously with equivalent but differently-named values
+
+  Scenario: Deprecated field should not appear in responses or should include deprecation warning
+    When I POST to /v1/users with a valid user payload
+    Then either:
+      - "verification_status" should not appear in the response body, OR
+      - "verification_status" should include a deprecation header or inline warning
+    But currently it appears with no indication that it will be removed
+
+  Scenario: Integrator builds flow using verification_status and experiences silent breakage
+    Given an integrator reads the user creation response and sees "verification_status": "unverified"
+    And they build their KYC polling logic on "verification_status"
+    When Kira removes the deprecated field in a future API version
+    Then the integrator's polling logic will silently stop working
+    And no webhook or changelog entry will alert them because the field was already marked deprecated
