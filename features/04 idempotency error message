@@ -1,0 +1,49 @@
+Feature: Idempotency key reuse returns a clear, actionable error message
+
+  As an integrator implementing retry logic
+  I want idempotency errors to clearly state the cause
+  So that I can distinguish between a server failure and a client mistake
+
+  Background:
+    Given I have a valid Bearer token from POST /auth
+    And I set required auth headers
+
+  Scenario: Reusing an idempotency key with different body returns misleading error
+    Given I previously created a user with idempotency-key "550e8400-e29b-41d4-a716-446655440001"
+    When I POST to /v1/users with the same idempotency-key but different body:
+      """json
+      {
+        "type": "individual",
+        "first_name": "Different",
+        "last_name": "User",
+        "email": "different@example.com"
+      }
+      """
+    Then the response status should be 400
+    And the response body contains:
+      """json
+      {
+        "code": "validation_error",
+        "message": "Failed to store idempotency key"
+      }
+      """
+    And the message "Failed to store idempotency key" implies a server-side storage failure
+    But the actual cause is a client mistake: reusing a key with different data
+
+  Scenario: Idempotency error message should match the documented error format
+    Given the documentation shows idempotency conflicts return:
+      """json
+      {
+        "code": "idempotency_key_reused",
+        "message": "Idempotency key has already been used with different request data"
+      }
+      """
+    When I trigger an idempotency key reuse error in the sandbox
+    Then the actual response should match the documented error format
+    But currently the response uses "validation_error" code and "Failed to store" message instead
+
+  Scenario: Integrator with retry logic mistakes idempotency error for server failure
+    Given an integrator implements retry logic that retries on "Failed to store" errors
+    When they receive "Failed to store idempotency key" after a network timeout
+    Then they will retry with the same key and different state
+    And this will cause duplicate prevention to fail silently
