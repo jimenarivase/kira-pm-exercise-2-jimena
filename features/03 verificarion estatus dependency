@@ -1,0 +1,52 @@
+Feature: KYC completion dependency before virtual account creation is documented in the integration flow
+
+  As an integrator using verification_link mode
+  I want to know upfront that the user must complete KYC before I can create a virtual account
+  So that I don't build a flow that silently fails at the virtual account step
+
+  Background:
+    Given I have a valid Bearer token from POST /auth
+    And I set required auth headers
+
+  Scenario: Creating a virtual account for a user in verification_link flow fails with status CREATED
+    Given I created a user with "verification_mode": "verification_link"
+    And the user has status "CREATED" because they have not completed the hosted KYC form
+    When I POST to /v1/virtual-accounts with body:
+      """json
+      {
+        "user_id": "<user_id_in_CREATED_status>",
+        "type": "US_BANK",
+        "bank": "austin_capital_trust"
+      }
+      """
+    Then the response status should be 400
+    And the response body contains:
+      """json
+      {
+        "message": "User must be in VERIFIED status to create a virtual account. Current status: CREATED"
+      }
+      """
+
+  Scenario: Documentation for verification_link flow includes prerequisite warning
+    Given an integrator reads the verification_link documentation
+    Then the documentation should explicitly state:
+      "A virtual account cannot be created until the user has completed KYC and reached VERIFIED status"
+    And the documentation should show the full flow:
+      | Step | Action                                      | Expected status     |
+      | 1    | POST /v1/users with verification_link       | CREATED             |
+      | 2    | User completes hosted KYC form              | VERIFIED            |
+      | 3    | POST /v1/virtual-accounts                   | 201 Created         |
+    But currently the documentation shows steps 1 and 3 without mentioning step 2 as a prerequisite
+
+  Scenario: Virtual account creation succeeds once user reaches VERIFIED status
+    Given the user has completed KYC and has status "VERIFIED"
+    When I POST to /v1/virtual-accounts with body:
+      """json
+      {
+        "user_id": "<verified_user_id>",
+        "type": "US_BANK",
+        "bank": "austin_capital_trust"
+      }
+      """
+    Then the response status should be 201
+    And the response body contains "status": "activating"
