@@ -1,0 +1,48 @@
+Feature: Virtual Account type enum values match documentation
+
+  As an integrator building on the Kira API
+  I want the `type` field values in the API to match what the documentation shows
+  So that I can create virtual accounts without needing a support ticket
+
+  Background:
+    Given I have a valid Bearer token from POST /auth
+    And I have a verified user with id "01299930-4af7-4875-ae12-ff7f94ebaa56"
+    And I set header "Authorization" to "Bearer <valid_token>"
+    And I set header "x-api-key" to "<valid_api_key>"
+    And I set header "idempotency-key" to a valid UUID
+
+  Scenario: Creating a virtual account with the documented type value fails
+    Given the documentation states valid type values include "usa-virtual-accounts-act"
+    When I POST to /v1/virtual-accounts with body:
+      """json
+      {
+        "user_id": "01299930-4af7-4875-ae12-ff7f94ebaa56",
+        "type": "usa-virtual-accounts-act"
+      }
+      """
+    Then the response status should be 400
+    And the response body contains:
+      """json
+      {
+        "message": "type is Invalid enum value. Expected 'US_BANK' | 'MX_SPEI', received 'usa-virtual-accounts-act'"
+      }
+      """
+    And this confirms a mismatch between documented values and actual API enum values
+
+  Scenario: Creating a virtual account with the actual API enum value succeeds
+    When I POST to /v1/virtual-accounts with body:
+      """json
+      {
+        "user_id": "01299930-4af7-4875-ae12-ff7f94ebaa56",
+        "type": "US_BANK",
+        "bank": "austin_capital_trust"
+      }
+      """
+    Then the response status should be 201
+    And the response body contains a "id" field
+    And the response body contains "status": "activating"
+
+  Scenario: API error response reveals correct enum values not present in docs
+    When I POST to /v1/virtual-accounts with an invalid type value
+    Then the error message should expose valid enum values "US_BANK" and "MX_SPEI"
+    And these values should also appear in the official documentation
